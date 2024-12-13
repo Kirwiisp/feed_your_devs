@@ -8,14 +8,19 @@ TOKEN = os.getenv("TOKEN")
 
 # Set up intents
 intents = discord.Intents.default()  # Use default intents
-intents.messages = True  # Enable intents for messages (adjust based on your needs)
+intents.messages = True  # Enable intents for messages 
+intents.members = True # Enable Intents for members
 
 # Create the client with intents
 client = discord.Client(intents=intents)
-
 @client.event
 async def on_ready():
-    print(f'{client.user} has connected to Discord!')
+    for guild in client.guilds:
+        print(f"Guild = ",guild.name)
+        members = guild.members
+        for member in members:
+            print(f"User: ",member.name)
+    print(f'{client.user.name} has connected to Discord!')
 
 # Run the bot
 client.run(TOKEN)
