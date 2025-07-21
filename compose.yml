@@ -13,13 +13,13 @@ services:
 
   bot:
     container_name: FeedBot
-    image: python:3.12
+    image: alpine:3.21.3
     restart: unless-stopped
     env_file: ".env"
     volumes:
       - ./app:/rel
     command:
-      sh -c "python3 /rel/app.py"
+      ""
     networks:
       - backend
 
