@@ -34,6 +34,9 @@ const timeLayout = "15:04"
 // Bot Discord's token
 var botToken string
 
+// ticker set to 1 minute
+var tickerMin *time.Ticker = time.NewTicker(1 * time.Minute)
+
 // Slice of Devs for test TODO Remove
 var devs = []Dev{
 	{
@@ -50,6 +53,11 @@ var testMapTime = map[NotificationTime][]UserId{
 }
 
 var ticker time.Ticker = *time.NewTicker(1 * time.Minute)
+
+func whoToNotify(notifMap map[NotificationTime][]UserId) []UserId{
+	now := time.Now().Format(timeLayout)
+	return notifMap[NotificationTime(now)]
+}
 
 func validateNotificationTime(input string) (NotificationTime, error){
 	isFormated := regexp.MustCompile(`^\d{2}:\d{2}$`).MatchString(input)
