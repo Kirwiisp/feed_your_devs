@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"regexp"
+	"syscall"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
@@ -28,21 +30,21 @@ type Dev struct {
 }
 
 // Reference time layout "Mon Jan 2 15:04:05 MST 2006"
-//var h,_ = time.Parse(timeLayout,test)
+// var h,_ = time.Parse(timeLayout,test)
 const timeLayout = "15:04"
 
 // Bot Discord's token
 var botToken string
 
 // ticker set to 1 minute
-var tickerMin *time.Ticker = time.NewTicker(1 * time.Minute)
+var tickerMinute *time.Ticker = time.NewTicker(1 * time.Minute)
 
 // Slice of Devs for test TODO Remove
 var devs = []Dev{
 	{
-		Name:   "UserName",
-		UserId: "uuid",
-		DesiredNotificationTimes: []NotificationTime{"08:15","22:30"},
+		Name:                     "UserName",
+		UserId:                   "UserID",
+		DesiredNotificationTimes: []NotificationTime{"08:15", "22:30"},
 	},
 }
 
@@ -52,33 +54,32 @@ var testMapTime = map[NotificationTime][]UserId{
 	"22:30": {devs[0].UserId},
 }
 
-var ticker time.Ticker = *time.NewTicker(1 * time.Minute)
-
-func whoToNotify(notifMap map[NotificationTime][]UserId) []UserId{
-	now := time.Now().Format(timeLayout)
-	return notifMap[NotificationTime(now)]
+// Return the slice containing the id of user to notify for the provided time TODO change call to DB
+func getIdToNotify(time NotificationTime) []UserId {
+	return testMapTime[time]
 }
 
-func validateNotificationTime(input string) (NotificationTime, error){
+// Ensure input string is formated as "15:04" so it can be used as NotificationTime
+func validateNotificationTime(input string) (NotificationTime, error) {
 	isFormated := regexp.MustCompile(`^\d{2}:\d{2}$`).MatchString(input)
 	_, err := time.Parse(timeLayout, input)
-	if err != nil{
+	if err != nil {
 		log.Println("Invalid time: ", err)
 	}
-	if isFormated{
+	if isFormated {
 		return NotificationTime(input), nil
 	}
 	return "", fmt.Errorf("Incorrect formating: %s ", input)
 }
 
 // Validate the discord User ID (length between 17 and 18, only digits)
-func validateUserId(input string) (UserId, error){
+func validateUserId(input string) (UserId, error) {
 	validLength := false
-	if len(input) == 17 || len(input) ==18{
-		validLength = true	
+	if len(input) == 17 || len(input) == 18 {
+		validLength = true
 	}
 	onlyDigits := regexp.MustCompile(`^\d+$`).MatchString(input)
-	if validLength && onlyDigits{
+	if validLength && onlyDigits {
 		userId := UserId(input)
 		return userId, nil
 	}
@@ -120,12 +121,19 @@ func (session *DiscordSession) sendMessage(channel *discordgo.Channel, message s
 	}
 }
 
-// TODO Send reminder to provided Devs accordingly to DesiredNotificationTimes
-func (session *DiscordSession) sendReminder(devs []Dev) {
-	for _, dev := range devs {
-		channel := session.createUserChannel(string(dev.UserId))
-		message := fmt.Sprintf("Hey %v ! Let's eat a pizza tonight !", dev.Name)
-		session.sendMessage(channel, message)
+// TODO personalize to message
+func (session *DiscordSession) notify(id UserId) {
+	channel := session.createUserChannel(string(id))
+	message := fmt.Sprintf("Hey ! Let's eat a pizza tonight !")
+	session.sendMessage(channel, message)
+}
+
+// Get list UserId where desired notification time match current time and notify them
+func (session *DiscordSession) notifyUsersNow() {
+	now := NotificationTime(time.Now().Format(timeLayout))
+	idToNotify := getIdToNotify(now)
+	for i := range idToNotify {
+		session.notify(idToNotify[i])
 	}
 }
 
@@ -142,6 +150,10 @@ func loadDotEnv() {
 func main() {
 	log.Println("Feed your bot starting")
 
+	// Handle killing of the process
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+
 	// Load environment variables from .env file
 	loadDotEnv()
 
@@ -155,9 +167,21 @@ func main() {
 	discordSession := createDiscordSession(botToken)
 	// Open websocket connection and ensure the connection will be disconnected
 	openDiscordConnection(discordSession)
-	defer discordSession.Close()
+	defer func() {
+		discordSession.Close()
+		log.Println("Discord session closed")
+	}()
 
 	log.Println("Feed your dev is running")
 	// Send reminder to the slice of Devs passed as argument
-	discordSession.sendReminder(devs)
+	go func() {
+		for {
+			select {
+			case <-tickerMinute.C:
+				discordSession.notifyUsersNow()
+			}
+		}
+	}()
+	<-quit // wait until signal is received
+	log.Println("Shutting down")
 }
